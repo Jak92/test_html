@@ -1,4 +1,4 @@
-# GMod Recon v0.2.0 — Android live server map
+# GMod Recon v0.2.1 — Android live server map
 
 Standalone Android app with real GMod server snapshots. **No PC/backend or Steam key required**, and **no synthetic demo servers**.
 
@@ -22,3 +22,7 @@ Standalone Android app with real GMod server snapshots. **No PC/backend or Steam
 **Build**
 `cd gmod-recon/android && gradle :app:assembleDebug` (Android SDK 35, Java 17, Gradle 8.10.2).
 Build via .github/workflows/gmod-recon-apk.yml on the v0.2 live branch. Build artifact contains APK, source ZIP and feed probe.
+
+## New: On-device diagnostics
+
+Tap the 🐞 button on the right side of the map. It opens a diagnostic report and copies it to the Android clipboard. Paste into ChatGPT. The report includes counts, API request failures, loading times, last scan status, cache sizes, and map status. It excludes server IPs and names as well as private information. The report uses an Android WebView JavaScript clipboard bridge; it does not transmit the report to a remote service.

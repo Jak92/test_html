@@ -1,6 +1,11 @@
 package com.jak92.gmodrecon;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.webkit.JavascriptInterface;
+import android.widget.Toast;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.webkit.WebResourceRequest;
@@ -34,6 +39,19 @@ public final class MainActivity extends Activity {
             }
         });
         web.setWebChromeClient(new WebChromeClient());
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void copy(String report) {
+                if(report == null || report.length() > 12000 || !report.startsWith("[GMod Recon Debug]")) return;
+                runOnUiThread(() -> {
+                    ClipboardManager clipboard = (ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+                    if(clipboard != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("GMod Recon Debug", report));
+                        Toast.makeText(MainActivity.this, "GMod Recon report copied", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        }, "ReconClipboard");
         setContentView(web);
         web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
     }

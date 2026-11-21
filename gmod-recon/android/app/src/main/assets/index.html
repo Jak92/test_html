@@ -18,11 +18,13 @@ label{display:flex;align-items:center;justify-content:space-between;gap:10px;pad
 footer{position:absolute;bottom:0;left:0;right:0;z-index:3;background:#0b1b2bea;border-top:1px solid #24435a;height:34px;display:flex;align-items:center;padding:0 12px;color:#a5bfd1;font-size:10px}
 .menu{position:absolute;top:12px;left:12px;z-index:8}.menu button{background:#133b55}.notice{position:absolute;left:76px;right:58px;top:14px;z-index:4;background:#0b1c30d9;border:1px solid #38617e;padding:10px;border-radius:8px;font-size:10px;color:#b8cddd;text-align:center}
 .pill{color:#44c5ed}.muted{color:#90a6bc}
+
+.debug-dialog{position:absolute;inset:0;background:#0009;z-index:22;display:flex;justify-content:center;align-items:center;padding:14px}.debug-dialog.hide{display:none}.debug-panel{background:#122439;border:1px solid #467a9d;border-radius:12px;padding:14px;max-width:520px;width:100%;max-height:85%;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px #000a}.debug-heading{display:flex;align-items:center;justify-content:space-between;font-size:17px}.debug-heading button{padding:4px 10px}.debug-panel p{margin:0}.debug-panel textarea{width:100%;flex:1;min-height:210px;max-height:55vh;border:1px solid #3c6886;border-radius:7px;background:#0b1726;color:#e5efff;padding:10px;font:12px/1.48 monospace;resize:none}.debug-actions{display:flex;gap:8px;justify-content:flex-end}.debug-actions button:first-child{background:#176187}
 </style></head><body><div class="app">
 <header><div><strong>◉ GMOD RECON</strong><small>GLOBAL SERVER ATLAS</small></div><span class="status" id="mode">● LIVE</span><button id="scan">Scan live</button></header>
 <main><div id="map"></div><div class="menu"><button id="menu">☰ Filters</button></div>
 <div class="notice" id="notice">Real servers • IP locations estimated</div>
-<div class="controls"><button id="plus">+</button><button id="minus">−</button><button id="world">◎</button></div>
+<div class="controls"><button id="plus">+</button><button id="minus">−</button><button id="world">◎</button><button id="debugBtn" title="Copy debug report" aria-label="Copy debug report">🐞</button></div>
 <aside id="sheet"><h2>Server Network</h2><p class="hint">Explore Garry's Mod worldwide. Location markers are estimates unless verified.</p>
 <div id="stats"></div>
 <input type="search" id="search" placeholder="Search servers, countries, maps…">
@@ -37,6 +39,7 @@ footer{position:absolute;bottom:0;left:0;right:0;z-index:3;background:#0b1b2bea;
 <p class="hint">Real public server listings. Coordinates are estimates, not exact private addresses.</p></aside>
 <div class="panel hide" id="panel"><button style="float:right" id="close">✕</button><div class="pill">SERVER DETAILS · LIVE</div><div id="panelname"></div><div id="paneldata" class="metadata"></div><p class="hint">Map points are estimated from IP geolocation and do not identify homes.</p><button id="watch">☆ Watch</button> <button id="copy">Copy IP</button></div>
 <footer><span id="footertext">No real data loaded yet</span></footer>
+<div id="debugDialog" class="debug-dialog hide"><div class="debug-panel"><div class="debug-heading"><b>🐞 Debug Report</b><button id="debugClose">✕</button></div><p id="debugHint" class="hint">No IP addresses, user identity, or server names are included.</p><textarea id="debugText" readonly spellcheck="false" aria-label="Debug report"></textarea><div class="debug-actions"><button id="debugCopy">📋 Copy again</button><button id="debugDismiss">Close</button></div></div></div>
 </main></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
 <script>
@@ -45,12 +48,13 @@ footer{position:absolute;bottom:0;left:0;right:0;z-index:3;background:#0b1b2bea;
 "use strict";
 const $=id=>document.getElementById(id),nf=n=>Number(n||0).toLocaleString("en-US");
 let map=null,ready=false,servers=[],filtered=[],scanning=false,selected=null,updateAt=0,total=0,report="",geo={},favorites=new Set();
+const diagnostics={bootAt:Date.now(),startedScanAt:0,lastScanDurationMs:null,scanAttempts:0,geoBatchesFailed:0,geoIpsRequested:0,requests:{GSM:{ok:0,failed:0,ms:0,bytes:0},GeoJS:{ok:0,failed:0,ms:0,bytes:0}},lastError:"none",lastHttpStatus:"none",mapErrors:0,mapDataUpdates:0,loadedSnapshot:false};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const loadKey=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch(e){return fallback}};
 const store=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value))}catch(e){}};
 geo=loadKey("recon-v02-geo",{});favorites=new Set(loadKey("recon-v02-watch",[]));
 let snap=loadKey("recon-v02-snapshot",null);
-if(snap&&Array.isArray(snap.servers)){servers=snap.servers;updateAt=snap.at||0;total=snap.total||0}
+if(snap&&Array.isArray(snap.servers)){servers=snap.servers;updateAt=snap.at||0;total=snap.total||0;diagnostics.loadedSnapshot=true}
 $("depth").value=String(loadKey("recon-v02-depth",500));
 function status(msg){report=msg;$("footertext").textContent=msg;$("mode").textContent=scanning?"◌ SCANNING":servers.length?"● LIVE":"● CONNECTING";}
 function loc(s){const g=geo[s.ip];if(!g)return;s.lat=g.lat;s.lon=g.lon;s.city=g.city;s.country=g.country;s.countryCode=g.countryCode;s.region=g.region;s.provider=g.provider;s.accuracyKm=g.accuracyKm}
@@ -75,7 +79,7 @@ function update(){
  if(!list.length)list=found.filter(s=>!Number.isFinite(s.lat)).sort((a,b)=>b.players-a.players).slice(0,15);
  $("list").innerHTML=list.map(s=>"<button class='entry' data-id='"+esc(s.id)+"'>"+esc(s.name)+"<small>"+esc(s.city||s.country||"Location unavailable")+" · "+esc(s.map)+" · "+s.players+"/"+s.maxPlayers+"</small></button>").join("")||"<p class='hint'>No matching servers</p>";
  document.querySelectorAll(".entry").forEach(b=>b.onclick=()=>inspect(b.dataset.id));
- if(ready&&map.getSource("servers"))map.getSource("servers").setData({type:"FeatureCollection",features:filtered.map(s=>({type:"Feature",geometry:{type:"Point",coordinates:[s.lon,s.lat]},properties:{id:s.id,players:s.players}}))});
+ if(ready&&map.getSource("servers")){diagnostics.mapDataUpdates++;map.getSource("servers").setData({type:"FeatureCollection",features:filtered.map(s=>({type:"Feature",geometry:{type:"Point",coordinates:[s.lon,s.lat]},properties:{id:s.id,players:s.players}}))})};
 }
 function inspect(id){
  selected=servers.find(s=>s.id===id);if(!selected)return;const s=selected;
@@ -86,27 +90,38 @@ function inspect(id){
  $("sheet").classList.remove("open");
 }
 async function json(url){
- const c=new AbortController(),t=setTimeout(()=>c.abort(),18000);
- try{const res=await fetch(url,{cache:"no-store",signal:c.signal});const data=await res.json();if(!res.ok)throw Error(data.detail||data.error||"HTTP "+res.status);return data}
- finally{clearTimeout(t)}
+ const kind=url.includes("gsm.kuryzhev.cloud")?"GSM":"GeoJS",meter=diagnostics.requests[kind];
+ const started=performance.now(),c=new AbortController(),t=setTimeout(()=>c.abort(),18000);
+ try{
+  const res=await fetch(url,{cache:"no-store",signal:c.signal});
+  diagnostics.lastHttpStatus=kind+": "+res.status;
+  const data=await res.json();
+  if(!res.ok)throw Error(data.detail||data.error||"HTTP "+res.status);
+  meter.ok++;meter.bytes+=JSON.stringify(data).length;
+  return data;
+ }catch(e){
+  meter.failed++;diagnostics.lastError=kind+": "+String(e&&e.message||e).slice(0,150);
+  throw e;
+ }finally{meter.ms+=Math.round(performance.now()-started);clearTimeout(t)}
 }
 async function locationScan(){
  const fresh=Date.now()-7*86400000,ips=[...new Set(servers.map(s=>s.ip))].filter(ip=>!geo[ip]||geo[ip].at<fresh);
  let failures=0;
+ diagnostics.geoIpsRequested+=ips.length;
  for(let i=0;i<ips.length;i+=25){
   try{
    const data=await json("https://get.geojs.io/v1/ip/geo.json?ip="+encodeURIComponent(ips.slice(i,i+25).join(",")));
    for(const g of Array.isArray(data)?data:[data]){if(!g||!valid(g.ip))continue;let lat=+g.latitude,lon=+g.longitude;if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)continue;
     geo[g.ip]={lat,lon,city:g.city||"",region:g.region||"",country:g.country||"",countryCode:g.country_code||"",provider:g.organization_name||"",accuracyKm:Number.isFinite(+g.accuracy)?+g.accuracy:null,at:Date.now()};
    }
-  }catch(e){failures++}
+  }catch(e){failures++;diagnostics.geoBatchesFailed++}
   if(i%100===0){servers.forEach(loc);update();store("recon-v02-geo",geo)}
  }
  servers.forEach(loc);update();store("recon-v02-geo",geo);
  return failures;
 }
 async function scan(){
- if(scanning)return;scanning=true;$("scan").disabled=true;$("scan").textContent="Scanning…";
+ if(scanning)return;scanning=true;diagnostics.scanAttempts++;diagnostics.startedScanAt=Date.now();$("scan").disabled=true;$("scan").textContent="Scanning…";
  const maxPages=Math.ceil(+$("depth").value/100);const collected=[],seen=new Set();let failure="";
  try{
   for(let page=1;page<=maxPages;page++){
@@ -128,7 +143,7 @@ async function scan(){
   if(collected.length){servers=collected;servers.forEach(loc);updateAt=Date.now();store("recon-v02-snapshot",{at:updateAt,total,servers})}
   status("Live data failed: "+failure+(collected.length?" · partial results retained":" · check connection"));
   $("notice").textContent="Live scan failed: "+failure;$("notice").style.display="block";
- }finally{scanning=false;$("scan").disabled=false;$("scan").textContent="↻ Scan live";$("mode").textContent=servers.length?"● LIVE":"● OFFLINE";setModes();update()}
+ }finally{diagnostics.lastScanDurationMs=Date.now()-diagnostics.startedScanAt;scanning=false;$("scan").disabled=false;$("scan").textContent="↻ Scan live";$("mode").textContent=servers.length?"● LIVE":"● OFFLINE";setModes();update()}
 }
 function setModes(){let old=$("gamemode").value, modes=[...new Set(servers.map(s=>s.gamemode).filter(Boolean))].sort();$("gamemode").innerHTML="<option value=''>All gamemodes</option>"+modes.map(x=>"<option>"+esc(x)+"</option>").join("");$("gamemode").value=modes.includes(old)?old:"";}
 $("menu").onclick=()=>$("sheet").classList.toggle("open");
@@ -153,8 +168,72 @@ if(window.maplibregl)try{
   ready=true;update();
  });
  map.on("moveend",()=>update());
-}catch(e){$("notice").textContent="Map error: "+e.message}
-else $("notice").textContent="Map library unavailable; check your connection";
+}catch(e){diagnostics.mapErrors++;diagnostics.lastError="Map: "+String(e.message||e).slice(0,150);$("notice").textContent="Map error: "+e.message}
+else {diagnostics.mapErrors++;diagnostics.lastError="MapLibre unavailable";$("notice").textContent="Map library unavailable; check your connection"};
+
+function reportText(){
+ const located=servers.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon)).length;
+ const knownIPs=new Set(servers.map(s=>s.ip)).size;
+ const cachedIPs=Object.keys(geo).length;
+ const cachedBytes=(["recon-v02-geo","recon-v02-snapshot","recon-v02-watch","recon-v02-depth"].reduce((n,k)=>n+(localStorage.getItem(k)||"").length,0));
+ const cacheKB=(new Blob([JSON.stringify(geo)]).size/1024).toFixed(1);
+ const ms=n=>n===null?"not measured":(n/1000).toFixed(1)+"s";
+ const stamp=n=>n?new Date(n).toISOString():"none";
+ const zoom=ready?map.getZoom().toFixed(2):"not ready";
+ const gsm=diagnostics.requests.GSM,geoStats=diagnostics.requests.GeoJS;
+ const lines=[
+ "[GMod Recon Debug] v0.2.1",
+ "Captured: "+new Date().toISOString(),
+ "OS: Android / WebView",
+ "Session uptime: "+ms(Date.now()-diagnostics.bootAt),
+ "Map ready: "+(ready?"yes":"no")+" | zoom: "+zoom,
+ "Map source refreshes: "+diagnostics.mapDataUpdates+" | map errors: "+diagnostics.mapErrors,
+ "Scan in progress: "+scanning+" | scan attempts: "+diagnostics.scanAttempts,
+ "Scanned entries: "+servers.length+" | source index total: "+total,
+ "Mapped entries: "+located+" | unmapped: "+(servers.length-located),
+ "Unique server IPs: "+knownIPs+" | cached location IPs: "+cachedIPs,
+ "Pins after filters: "+filtered.length+" | watchlist entries: "+favorites.size,
+ "Filters: active="+$("active").checked+", top100="+$("top100").checked+", saved="+$("saved").checked+", minPlayers="+$("min").value+", gamemode="+($("gamemode").value||"all"),
+ "Scan depth selected: "+$("depth").value,
+ "Last successful snapshot: "+stamp(updateAt)+" | loaded from cache: "+diagnostics.loadedSnapshot,
+ "Last scan duration: "+ms(diagnostics.lastScanDurationMs),
+ "GSM requests: "+gsm.ok+" ok / "+gsm.failed+" failed | "+(gsm.bytes/1024).toFixed(1)+" KB | "+ms(gsm.ms),
+ "GeoJS requests: "+geoStats.ok+" ok / "+geoStats.failed+" failed | "+(geoStats.bytes/1024).toFixed(1)+" KB | "+ms(geoStats.ms),
+ "Geo IP requests queued: "+diagnostics.geoIpsRequested+" | failed batches: "+diagnostics.geoBatchesFailed,
+ "Location cache JSON: "+cacheKB+" KB | total saved data: "+(cachedBytes/1024).toFixed(1)+" KB",
+ "Last HTTP status: "+diagnostics.lastHttpStatus,
+ "Last error: "+diagnostics.lastError,
+ "Footer: "+report.slice(0,180)
+ ];
+ return lines.join("\n");
+}
+async function copyReport(){
+ const value=$("debugText").value;
+ try{
+  if(window.ReconClipboard&&typeof window.ReconClipboard.copy==="function"){
+   window.ReconClipboard.copy(value);
+   $("debugHint").textContent="✅ Sent to Android clipboard. Paste the report into ChatGPT.";
+   return;
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+   await navigator.clipboard.writeText(value);
+   $("debugHint").textContent="✅ Copied! Paste it into ChatGPT.";
+   return;
+  }
+  $("debugText").focus();$("debugText").select();
+  if(document.execCommand("copy")){$("debugHint").textContent="✅ Copied! Paste it into ChatGPT.";return}
+  throw Error("Clipboard permission unavailable");
+ }catch(e){$("debugHint").textContent="Copy failed. Select the text below and copy manually."}
+}
+$("debugBtn").onclick=()=>{
+ $("debugText").value=reportText();
+ $("debugDialog").classList.remove("hide");
+ $("debugHint").textContent="Copying report…";
+ copyReport();
+};
+$("debugCopy").onclick=copyReport;
+$("debugClose").onclick=$("debugDismiss").onclick=()=>$("debugDialog").classList.add("hide");
+
 setModes();update();
 if(servers.length)status("Cached real data from "+new Date(updateAt).toLocaleString()+" · updating shortly");
 else status("Connecting to real GMod server feed…");

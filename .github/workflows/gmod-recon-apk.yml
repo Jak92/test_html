@@ -1,7 +1,7 @@
-name: GMod Recon v0.2 Android APK
+name: GMod Recon v0.2.1 Android APK
 on:
   push:
-    branches: [gmod-recon-android-v02-live]
+    branches: [gmod-recon-android-v021-diagnostics]
     paths: ['gmod-recon/**', '.github/workflows/gmod-recon-apk.yml']
   workflow_dispatch:
 jobs:
@@ -53,12 +53,12 @@ jobs:
         working-directory: gmod-recon/android
         run: gradle --no-daemon :app:assembleDebug
       - name: Package source ZIP
-        run: zip -q -r GMod-Recon-v0.2-Android-Source.zip gmod-recon/android gmod-recon/README.md gmod-recon/feed-probe.json .github/workflows/gmod-recon-apk.yml -x 'gmod-recon/android/**/build/*' 'gmod-recon/android/.gradle/*'
+        run: zip -q -r GMod-Recon-v0.2.1.1-Android-Source.zip gmod-recon/android gmod-recon/README.md gmod-recon/feed-probe.json .github/workflows/gmod-recon-apk.yml -x 'gmod-recon/android/**/build/*' 'gmod-recon/android/.gradle/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: GMod-Recon-v0.2-APK-and-Source
+          name: GMod-Recon-v0.2.1.1-APK-and-Source
           path: |
             gmod-recon/android/app/build/outputs/apk/debug/app-debug.apk
-            GMod-Recon-v0.2-Android-Source.zip
+            GMod-Recon-v0.2.1.1-Android-Source.zip
             gmod-recon/feed-probe.json
           retention-days: 30
