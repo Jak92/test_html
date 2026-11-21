@@ -19,9 +19,9 @@ footer{position:absolute;bottom:0;left:0;right:0;z-index:3;background:#0b1b2bea;
 .menu{position:absolute;top:12px;left:12px;z-index:8}.menu button{background:#133b55}.notice{position:absolute;left:76px;right:58px;top:14px;z-index:4;background:#0b1c30d9;border:1px solid #38617e;padding:10px;border-radius:8px;font-size:10px;color:#b8cddd;text-align:center}
 .pill{color:#44c5ed}.muted{color:#90a6bc}
 </style></head><body><div class="app">
-<header><div><strong>◉ GMOD RECON</strong><small>GLOBAL SERVER ATLAS</small></div><span class="status" id="mode">● DEMO</span><button id="scan">Scan live</button></header>
+<header><div><strong>◉ GMOD RECON</strong><small>GLOBAL SERVER ATLAS</small></div><span class="status" id="mode">● LIVE</span><button id="scan">Scan live</button></header>
 <main><div id="map"></div><div class="menu"><button id="menu">☰ Filters</button></div>
-<div class="notice" id="notice">Synthetic example servers · not real locations</div>
+<div class="notice" id="notice">Real servers • IP locations estimated</div>
 <div class="controls"><button id="plus">+</button><button id="minus">−</button><button id="world">◎</button></div>
 <aside id="sheet"><h2>Server Network</h2><p class="hint">Explore Garry's Mod worldwide. Location markers are estimates unless verified.</p>
 <div id="stats"></div>
@@ -30,63 +30,135 @@ footer{position:absolute;bottom:0;left:0;right:0;z-index:3;background:#0b1b2bea;
 <label>Top 100 in view <input type="checkbox" id="top100"></label>
 <label>Watchlist only <input type="checkbox" id="saved"></label>
 <h3>MINIMUM PLAYERS: <span id="mintext">0+</span></h3><input type="range" id="min" min="0" max="50" value="0">
-<h3>GAMEMODE</h3><select id="gamemode"><option value="">All gamemodes</option></select>
+<h3>SCAN DEPTH</h3><select id='depth'><option value='100'>Top 100</option><option value='500' selected>Top 500</option><option value='1000'>Top 1,000</option><option value='2500'>Top 2,500</option><option value='10000'>Up to 10,000 (slow)</option></select><p class='hint'>Shows the most populated servers in the source index. Change this then tap Scan live.</p><h3>GAMEMODE</h3><select id="gamemode"><option value="">All gamemodes</option></select>
 <h3>CLUSTER BY</h3><div><button id="serverMetric">Servers</button><button id="playerMetric">Players</button></div>
 <h3>TOP COUNTRIES</h3><div id="countries"></div>
 <h3>SERVERS IN VIEW</h3><div id="list"></div>
-<p class="hint">All listed servers are synthetic test examples. Private home addresses are never inferred from IPs.</p></aside>
-<div class="panel hide" id="panel"><button style="float:right" id="close">✕</button><div class="pill">SERVER DETAILS · DEMO</div><div id="panelname"></div><div id="paneldata" class="metadata"></div><p class="hint">Demo coordinates are invented. Real IP locations would have an accuracy radius.</p><button id="watch">☆ Watch</button> <button id="copy">Copy IP</button></div>
-<footer><span id="footertext">DEMO · 477 synthetic GMod servers</span></footer>
+<p class="hint">Real public server listings. Coordinates are estimates, not exact private addresses.</p></aside>
+<div class="panel hide" id="panel"><button style="float:right" id="close">✕</button><div class="pill">SERVER DETAILS · LIVE</div><div id="panelname"></div><div id="paneldata" class="metadata"></div><p class="hint">Map points are estimated from IP geolocation and do not identify homes.</p><button id="watch">☆ Watch</button> <button id="copy">Copy IP</button></div>
+<footer><span id="footertext">No real data loaded yet</span></footer>
 </main></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
 <script>
+
 (function(){
-"use strict";const el=x=>document.getElementById(x), games=['Sandbox','DarkRP','TTT','Prop Hunt','Zombie Survival','Murder','StarWarsRP','MilitaryRP'],maps=['gm_construct','gm_flatgrass','rp_downtown_v4c','ttt_minecraft_b5','gm_bigcity'];
-const locations=[
-['San Jose','United States','US',37.33,-121.88,66],['Dallas','United States','US',32.78,-96.79,38],['Chicago','United States','US',41.88,-87.63,32],['New York','United States','US',40.71,-74.01,36],['Los Angeles','United States','US',34.05,-118.24,34],
-['Toronto','Canada','CA',43.65,-79.38,24],['London','United Kingdom','GB',51.51,-.12,43],['Frankfurt','Germany','DE',50.11,8.68,42],['Paris','France','FR',48.86,2.35,20],['Warsaw','Poland','PL',52.23,21.01,20],['Moscow','Russia','RU',55.75,37.62,23],['São Paulo','Brazil','BR',-23.55,-46.63,18],['Sydney','Australia','AU',-33.86,151.21,18],['Tokyo','Japan','JP',35.67,139.65,22],['Seoul','South Korea','KR',37.56,126.97,16],['Shanghai','China','CN',31.23,121.47,25]];
-let seed=16427;function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
-const servers=[];for(const c of locations){for(let i=0;i<c[5];i++){let id='demo-'+servers.length,p=Math.floor(rand()*65),max=p>50?100:64,g=games[Math.floor(rand()*games.length)];
-servers.push({id,name:g+' • Community '+(servers.length+1),gamemode:g,map:maps[Math.floor(rand()*maps.length)],players:p,maxPlayers:max,ip:'192.0.2.'+(1+(servers.length%253)),port:27015+(i%20),lat:c[3]+(rand()-.5)*.45,lon:c[4]+(rand()-.5)*.55,city:c[0],country:c[1],countryCode:c[2]})}}
-servers.length=477;
-let map=null,selected=null,ready=false,metric='servers',visible=[],watches=new Set(JSON.parse(localStorage.getItem('gmodrecon-watch')||'[]'));
-const esc=s=>String(s).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','"':'&quot;'}[x]));
-const gameModes=[...new Set(servers.map(x=>x.gamemode))].sort();el('gamemode').innerHTML='<option value="">All gamemodes</option>'+gameModes.map(x=>'<option>'+esc(x)+'</option>').join('');
-function inView(s){if(!ready)return true;const b=map.getBounds(),a=b.getWest(),z=b.getEast();return s.lat>=b.getSouth()&&s.lat<=b.getNorth()&&(a<=z?s.lon>=a&&s.lon<=z:s.lon>=a||s.lon<=z)}
-function update(){let t=el('search').value.toLowerCase().trim(),min=+el('min').value,game=el('gamemode').value;el('mintext').textContent=min+'+';
-visible=servers.filter(s=>(!el('active').checked||s.players>0)&&s.players>=min&&(!game||s.gamemode===game)&&(!el('saved').checked||watches.has(s.id))&&(!t||[s.name,s.map,s.gamemode,s.city,s.country].some(x=>x.toLowerCase().includes(t))));
-if(el('top100').checked)visible=visible.filter(inView).sort((a,b)=>b.players-a.players).slice(0,100);
-el('stats').textContent=visible.length+' servers  ·  '+visible.reduce((n,s)=>n+s.players,0).toLocaleString()+' players';
-const counts={};for(const s of visible){counts[s.country]=(counts[s.country]||0)+1}
-el('countries').innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>'<div style="padding:4px 0">'+esc(k)+' <b style="float:right">'+v+'</b></div>').join('');
-const list=visible.filter(inView).sort((a,b)=>b.players-a.players).slice(0,15);
-el('list').innerHTML=list.map(s=>'<button class="entry" data-id="'+s.id+'">'+esc(s.name)+'<small>'+esc(s.city)+' · '+esc(s.map)+' · '+s.players+'/'+s.maxPlayers+'</small></button>').join('')||'<p class="hint">No matching servers</p>';
-document.querySelectorAll('.entry').forEach(b=>b.onclick=()=>pick(b.dataset.id));
-el('footertext').textContent='DEMO · '+visible.length+' synthetic servers shown';
-if(ready){let fc={type:'FeatureCollection',features:visible.map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s.lon,s.lat]},properties:{id:s.id,players:s.players}}))};map.getSource('servers').setData(fc)}}
-function pick(id){selected=servers.find(s=>s.id===id);if(!selected)return;el('panel').classList.remove('hide');el('panelname').textContent=selected.name;el('paneldata').innerHTML=esc(selected.city+', '+selected.country)+'<br>'+esc(selected.gamemode+' • '+selected.map)+'<br>'+selected.players+'/'+selected.maxPlayers+' players<br>Address: <b>unavailable (synthetic data)</b>';el('watch').textContent=watches.has(id)?'★ Saved':'☆ Watch';el('sheet').classList.remove('open')}
-el('watch').onclick=()=>{if(!selected)return;watches.has(selected.id)?watches.delete(selected.id):watches.add(selected.id);localStorage.setItem('gmodrecon-watch',JSON.stringify([...watches]));pick(selected.id);update()};
-el('copy').onclick=()=>{if(selected){prompt('Demo IP:port',selected.ip+':'+selected.port)}};
-el('close').onclick=()=>el('panel').classList.add('hide');
-el('menu').onclick=()=>el('sheet').classList.toggle('open');
-el('scan').onclick=()=>alert('Live discovery requires a separately hosted server-discovery backend. This APK currently contains demo data only.');
-for(const id of ['search','active','top100','saved','min','gamemode'])el(id).addEventListener(id==='search'||id==='min'?'input':'change',update);
-el('serverMetric').onclick=()=>{metric='servers';if(ready)map.setLayoutProperty('cluster-count-label','text-field',['get','point_count'])};
-el('playerMetric').onclick=()=>{metric='players';alert('Player totals appear in the filter panel. Cluster player-total labels are planned.')};
-el('plus').onclick=()=>map&&map.zoomIn();el('minus').onclick=()=>map&&map.zoomOut();el('world').onclick=()=>map&&map.flyTo({center:[8,21],zoom:1.2});
-update();
-if(!window.maplibregl){el('notice').textContent='Map library unavailable. Check internet; filters and list still work.';return}
-try{
-map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:[8,21],zoom:1.2,attributionControl:false});
-map.on('load',()=>{
-map.addSource('servers',{type:'geojson',data:{type:'FeatureCollection',features:[]},cluster:true,clusterRadius:54,clusterMaxZoom:13});
-map.addLayer({id:'clusters',type:'circle',source:'servers',filter:['has','point_count'],paint:{'circle-color':['step',['get','point_count'],'#2376af',20,'#209cb9',60,'#6c64bd',120,'#b965b6'],'circle-radius':['step',['get','point_count'],16,20,21,60,26,120,32],'circle-stroke-color':'#c8eafa','circle-stroke-width':1.4}});
-map.addLayer({id:'cluster-count-label',type:'symbol',source:'servers',filter:['has','point_count'],layout:{'text-field':['get','point_count'],'text-size':13,'text-font':['Open Sans Bold'],'text-allow-overlap':true},paint:{'text-color':'#ffffff'}});
-map.addLayer({id:'points',type:'circle',source:'servers',filter:['!',['has','point_count']],paint:{'circle-color':'#42d5e6','circle-radius':5,'circle-stroke-color':'#e6faff','circle-stroke-width':1}});
-map.on('click','clusters',ev=>{let f=map.queryRenderedFeatures(ev.point,{layers:['clusters']})[0];if(!f)return;map.getSource('servers').getClusterExpansionZoom(f.properties.cluster_id).then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z}))});
-map.on('click','points',ev=>{let f=map.queryRenderedFeatures(ev.point,{layers:['points']})[0];if(f)pick(f.properties.id)});
-map.on('mouseenter','points',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','points',()=>map.getCanvas().style.cursor='');
-ready=true;update()});map.on('moveend',()=>{if(el('top100').checked)update();else update()});map.on('error',()=>{});
-}catch(e){el('notice').textContent='Map unavailable: '+e.message}
+"use strict";
+const $=id=>document.getElementById(id),nf=n=>Number(n||0).toLocaleString("en-US");
+let map=null,ready=false,servers=[],filtered=[],scanning=false,selected=null,updateAt=0,total=0,report="",geo={},favorites=new Set();
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const loadKey=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch(e){return fallback}};
+const store=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value))}catch(e){}};
+geo=loadKey("recon-v02-geo",{});favorites=new Set(loadKey("recon-v02-watch",[]));
+let snap=loadKey("recon-v02-snapshot",null);
+if(snap&&Array.isArray(snap.servers)){servers=snap.servers;updateAt=snap.at||0;total=snap.total||0}
+$("depth").value=String(loadKey("recon-v02-depth",500));
+function status(msg){report=msg;$("footertext").textContent=msg;$("mode").textContent=scanning?"◌ SCANNING":servers.length?"● LIVE":"● CONNECTING";}
+function loc(s){const g=geo[s.ip];if(!g)return;s.lat=g.lat;s.lon=g.lon;s.city=g.city;s.country=g.country;s.countryCode=g.countryCode;s.region=g.region;s.provider=g.provider;s.accuracyKm=g.accuracyKm}
+function valid(ip){const p=String(ip).split(".");if(p.length!==4)return false;const n=p.map(Number);return n.every((x,i)=>Number.isInteger(x)&&x>=0&&x<=255&&/^\d+$/.test(p[i]))&&n[0]>0&&n[0]<224&&n[0]!==10&&n[0]!==127&&!(n[0]===192&&n[1]===168)&&!(n[0]===172&&n[1]>=16&&n[1]<=31)&&!(n[0]===169&&n[1]===254)}
+function norm(r){
+ const ip=String(r.ip||"");if(!valid(ip))return null;const port=Number(r.game_port||r.query_port||27015);
+ if(!Number.isInteger(port)||port<1||port>65535)return null;
+ const gm=String(r.gamemode||r.game_mode||(Array.isArray(r.tags)?r.tags.find(x=>/^(sandbox|darkrp|ttt|murder|prop hunt|terrortown|zombie survival)$/i.test(String(x))):"")||"Unspecified");
+ return {id:ip+":"+port,ip,port,name:String(r.display_name||r.server_name||"GMod Server").slice(0,180),players:Math.max(0,Number(r.players)||0),maxPlayers:Math.max(0,Number(r.max_players)||0),gamemode:gm,map:String(r.map_name||"Unknown"),checkedAt:String(r.checked_at||""),lat:null,lon:null,accuracyKm:null,city:"",country:"",countryCode:"",region:"",provider:"",source:"GSM / Steam",locationType:"estimated"};
+}
+function inside(s){if(!ready)return true;const b=map.getBounds(),w=b.getWest(),e=b.getEast();return s.lat>=b.getSouth()&&s.lat<=b.getNorth()&&(w<=e?s.lon>=w&&s.lon<=e:s.lon>=w||s.lon<=e)}
+function update(){
+ const q=$("search").value.trim().toLowerCase(),min=+$("min").value,gm=$("gamemode").value;
+ $("mintext").textContent=min+"+";
+ let found=servers.filter(s=>s.players>=min&&(!$("active").checked||s.players>0)&&(!gm||s.gamemode===gm)&&(!$("saved").checked||favorites.has(s.id))&&(!q||[s.name,s.ip,s.city,s.country,s.map,s.gamemode,s.provider].some(v=>String(v||"").toLowerCase().includes(q))));
+ const located=found.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon));
+ filtered=$("top100").checked?located.filter(inside).sort((a,b)=>b.players-a.players).slice(0,100):located;
+ $("stats").textContent=nf(found.length)+" servers · "+nf(located.length)+" mapped · "+nf(found.reduce((s,x)=>s+x.players,0))+" players";
+ const countries={};filtered.forEach(x=>{countries[x.country||"Unknown"]=(countries[x.country||"Unknown"]||0)+1});
+ $("countries").innerHTML=Object.entries(countries).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([a,b])=>"<div style='padding:4px 0'>"+esc(a)+" <b style='float:right'>"+nf(b)+"</b></div>").join("")||"<p class='hint'>Waiting for location data</p>";
+ let list=filtered.filter(inside).sort((a,b)=>b.players-a.players).slice(0,15);
+ if(!list.length)list=found.filter(s=>!Number.isFinite(s.lat)).sort((a,b)=>b.players-a.players).slice(0,15);
+ $("list").innerHTML=list.map(s=>"<button class='entry' data-id='"+esc(s.id)+"'>"+esc(s.name)+"<small>"+esc(s.city||s.country||"Location unavailable")+" · "+esc(s.map)+" · "+s.players+"/"+s.maxPlayers+"</small></button>").join("")||"<p class='hint'>No matching servers</p>";
+ document.querySelectorAll(".entry").forEach(b=>b.onclick=()=>inspect(b.dataset.id));
+ if(ready&&map.getSource("servers"))map.getSource("servers").setData({type:"FeatureCollection",features:filtered.map(s=>({type:"Feature",geometry:{type:"Point",coordinates:[s.lon,s.lat]},properties:{id:s.id,players:s.players}}))});
+}
+function inspect(id){
+ selected=servers.find(s=>s.id===id);if(!selected)return;const s=selected;
+ $("panel").classList.remove("hide");$("panelname").textContent=s.name;
+ $("paneldata").innerHTML=esc([s.city,s.region,s.country].filter(Boolean).join(", ")||"Location unavailable")+"<br>"+esc(s.gamemode)+" · "+esc(s.map)+"<br>"+s.players+"/"+s.maxPlayers+" players<br>Network: "+esc(s.provider||"Unknown")+"<br>Approximate GeoIP radius: "+esc(s.accuracyKm==null?"unknown":s.accuracyKm+" km")+"<br>Checked: "+esc(s.checkedAt||"Unknown")+"<br>"+esc(s.ip)+":"+s.port+"<br><b>No verified street address</b>";
+ $("watch").textContent=favorites.has(s.id)?"★ Saved":"☆ Watch";
+ if(ready&&Number.isFinite(s.lat))map.flyTo({center:[s.lon,s.lat],zoom:Math.max(map.getZoom(),5.3)});
+ $("sheet").classList.remove("open");
+}
+async function json(url){
+ const c=new AbortController(),t=setTimeout(()=>c.abort(),18000);
+ try{const res=await fetch(url,{cache:"no-store",signal:c.signal});const data=await res.json();if(!res.ok)throw Error(data.detail||data.error||"HTTP "+res.status);return data}
+ finally{clearTimeout(t)}
+}
+async function locationScan(){
+ const fresh=Date.now()-7*86400000,ips=[...new Set(servers.map(s=>s.ip))].filter(ip=>!geo[ip]||geo[ip].at<fresh);
+ let failures=0;
+ for(let i=0;i<ips.length;i+=25){
+  try{
+   const data=await json("https://get.geojs.io/v1/ip/geo.json?ip="+encodeURIComponent(ips.slice(i,i+25).join(",")));
+   for(const g of Array.isArray(data)?data:[data]){if(!g||!valid(g.ip))continue;let lat=+g.latitude,lon=+g.longitude;if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)continue;
+    geo[g.ip]={lat,lon,city:g.city||"",region:g.region||"",country:g.country||"",countryCode:g.country_code||"",provider:g.organization_name||"",accuracyKm:Number.isFinite(+g.accuracy)?+g.accuracy:null,at:Date.now()};
+   }
+  }catch(e){failures++}
+  if(i%100===0){servers.forEach(loc);update();store("recon-v02-geo",geo)}
+ }
+ servers.forEach(loc);update();store("recon-v02-geo",geo);
+ return failures;
+}
+async function scan(){
+ if(scanning)return;scanning=true;$("scan").disabled=true;$("scan").textContent="Scanning…";
+ const maxPages=Math.ceil(+$("depth").value/100);const collected=[],seen=new Set();let failure="";
+ try{
+  for(let page=1;page<=maxPages;page++){
+   status("Downloading public GMod servers · page "+page+"/"+maxPages+"…");
+   const resp=await json("https://gsm.kuryzhev.cloud/api/gmod/servers?online=true&source=steam&sort=players&order=desc&page_size=100&page="+page);
+   if(!Array.isArray(resp.items))throw Error("Unexpected GSM response");
+   total=Number(resp.total)||total;
+   resp.items.forEach(x=>{const s=norm(x);if(s&&!seen.has(s.id)){seen.add(s.id);loc(s);collected.push(s)}});
+   servers=collected;update();
+   if(resp.items.length<100||page>=Number(resp.total_pages||maxPages))break;
+  }
+  status("Looking up estimated locations for "+nf(servers.length)+" servers…");
+  let geoErrors=await locationScan();
+  updateAt=Date.now();store("recon-v02-snapshot",{at:updateAt,total,servers});
+  status("LIVE · "+nf(servers.filter(s=>Number.isFinite(s.lat)).length)+" mapped of "+nf(servers.length)+" retrieved / "+nf(total||servers.length)+" indexed"+(geoErrors?" · some locations unavailable":""));
+  $("notice").textContent="Real server snapshot · Coordinates are IP estimates";$("notice").style.display="block";
+ }catch(e){
+  failure=String(e.message||e);
+  if(collected.length){servers=collected;servers.forEach(loc);updateAt=Date.now();store("recon-v02-snapshot",{at:updateAt,total,servers})}
+  status("Live data failed: "+failure+(collected.length?" · partial results retained":" · check connection"));
+  $("notice").textContent="Live scan failed: "+failure;$("notice").style.display="block";
+ }finally{scanning=false;$("scan").disabled=false;$("scan").textContent="↻ Scan live";$("mode").textContent=servers.length?"● LIVE":"● OFFLINE";setModes();update()}
+}
+function setModes(){let old=$("gamemode").value, modes=[...new Set(servers.map(s=>s.gamemode).filter(Boolean))].sort();$("gamemode").innerHTML="<option value=''>All gamemodes</option>"+modes.map(x=>"<option>"+esc(x)+"</option>").join("");$("gamemode").value=modes.includes(old)?old:"";}
+$("menu").onclick=()=>$("sheet").classList.toggle("open");
+$("scan").onclick=scan;$("close").onclick=()=>$("panel").classList.add("hide");
+$("watch").onclick=()=>{if(!selected)return;favorites.has(selected.id)?favorites.delete(selected.id):favorites.add(selected.id);store("recon-v02-watch",[...favorites]);inspect(selected.id);update()};
+$("copy").onclick=()=>{if(selected)prompt("Server IP and port",selected.ip+":"+selected.port)};
+$("depth").onchange=()=>store("recon-v02-depth",+$("depth").value);
+$("world").onclick=()=>map&&map.flyTo({center:[8,21],zoom:1.2});
+$("plus").onclick=()=>map&&map.zoomIn();$("minus").onclick=()=>map&&map.zoomOut();
+for(const id of ["search","active","top100","saved","min","gamemode"])$(id).addEventListener(id==="search"||id==="min"?"input":"change",update);
+$("serverMetric").onclick=()=>{if(ready)map.setLayoutProperty("cluster-count-label","text-field",["get","point_count"])};
+$("playerMetric").onclick=()=>{if(ready)map.setLayoutProperty("cluster-count-label","text-field",["to-string",["get","playersTotal"]])};
+if(window.maplibregl)try{
+ map=new maplibregl.Map({container:"map",style:"https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",center:[8,21],zoom:1.2,attributionControl:true});
+ map.on("load",()=>{
+  map.addSource("servers",{type:"geojson",data:{type:"FeatureCollection",features:[]},cluster:true,clusterRadius:54,clusterMaxZoom:16,clusterProperties:{playersTotal:["+",["get","players"]]}});
+  map.addLayer({id:"clusters",type:"circle",source:"servers",filter:["has","point_count"],paint:{"circle-color":["step",["get","point_count"],"#2376af",20,"#209cb9",60,"#6c64bd",120,"#b965b6"],"circle-radius":["step",["get","point_count"],16,20,21,60,26,120,32],"circle-stroke-color":"#c8eafa","circle-stroke-width":1.4}});
+  map.addLayer({id:"cluster-count-label",type:"symbol",source:"servers",filter:["has","point_count"],layout:{"text-field":["get","point_count"],"text-size":13,"text-allow-overlap":true},paint:{"text-color":"#ffffff"}});
+  map.addLayer({id:"points",type:"circle",source:"servers",filter:["!",["has","point_count"]],paint:{"circle-color":"#42d5e6","circle-radius":5,"circle-stroke-color":"#e6faff","circle-stroke-width":1}});
+  map.on("click","clusters",ev=>{let f=map.queryRenderedFeatures(ev.point,{layers:["clusters"]})[0];if(f)map.getSource("servers").getClusterExpansionZoom(f.properties.cluster_id).then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z}))});
+  map.on("click","points",ev=>{let f=map.queryRenderedFeatures(ev.point,{layers:["points"]})[0];if(f)inspect(f.properties.id)});
+  ready=true;update();
+ });
+ map.on("moveend",()=>update());
+}catch(e){$("notice").textContent="Map error: "+e.message}
+else $("notice").textContent="Map library unavailable; check your connection";
+setModes();update();
+if(servers.length)status("Cached real data from "+new Date(updateAt).toLocaleString()+" · updating shortly");
+else status("Connecting to real GMod server feed…");
+setTimeout(()=>{if(!servers.length||Date.now()-updateAt>4*60000)scan()},650);
 })();
+
 </script></body></html>
