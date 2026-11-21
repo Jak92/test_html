@@ -1,0 +1,92 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#071321"><title>GMod Recon</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#081320;color:#e5efff;font:13px system-ui,Arial}.app{height:100%;display:flex;flex-direction:column}
+header{height:57px;background:#101e33;border-bottom:1px solid #27415b;display:flex;align-items:center;gap:12px;padding:0 14px;flex-shrink:0}
+header strong{font-size:17px;letter-spacing:1px;color:#48c7f7}header small{display:block;color:#8ba2bf;font-size:9px;letter-spacing:1.4px}
+header .status{margin-left:auto;font-size:11px;color:#d9ad5e;font-weight:700;letter-spacing:1px}
+button{background:#183953;color:#c9eaff;border:1px solid #3c6280;border-radius:8px;padding:9px;cursor:pointer;font-weight:700}button:active{background:#257dab}header button{font-size:12px}
+main{position:relative;flex:1;min-height:0;overflow:hidden}#map{position:absolute;inset:0;background:#091b2c}
+#sheet{position:absolute;left:0;top:0;bottom:0;width:min(300px,88vw);z-index:12;background:#101b2beF;overflow:auto;border-right:1px solid #33506e;padding:16px;box-shadow:10px 0 28px #0006;transform:translateX(-102%);transition:transform .16s}
+#sheet.open{transform:translateX(0)}h2{font-size:18px;margin:0 0 4px}.hint{font-size:11px;line-height:1.45;color:#8da4bd}#stats{margin:12px 0;background:#172b43;border:1px solid #315273;border-radius:8px;padding:12px;font-size:14px}
+input[type=search],select{background:#0d1c30;border:1px solid #355370;color:#e7f1ff;border-radius:7px;padding:11px;width:100%;margin:6px 0}input[type=range]{width:100%;accent-color:#44bff8}
+label{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #25374c}label input{accent-color:#2fbbec}h3{font-size:10px;color:#81b6d2;letter-spacing:1.6px;margin:19px 0 7px}.entry{display:block;width:100%;text-align:left;margin:5px 0;background:#14263d;color:#d3e6f5;border:1px solid #29445f;font-size:11px}
+.entry small{display:block;color:#8ea8c0;margin:3px 0}.panel{position:absolute;bottom:40px;left:12px;right:12px;z-index:11;background:#102137f5;border:1px solid #387799;border-radius:11px;padding:14px;max-width:380px;box-shadow:0 12px 40px #000a}
+.panel.hide{display:none}#panelname{font-size:17px;font-weight:800;margin-bottom:8px;overflow-wrap:anywhere}.metadata{color:#9bb6ca;line-height:1.7}.controls{position:absolute;right:12px;top:12px;z-index:6;display:flex;flex-direction:column;gap:6px}.controls button{width:39px;height:39px;font-size:18px;background:#0e273ceb}
+footer{position:absolute;bottom:0;left:0;right:0;z-index:3;background:#0b1b2bea;border-top:1px solid #24435a;height:34px;display:flex;align-items:center;padding:0 12px;color:#a5bfd1;font-size:10px}
+.menu{position:absolute;top:12px;left:12px;z-index:8}.menu button{background:#133b55}.notice{position:absolute;left:76px;right:58px;top:14px;z-index:4;background:#0b1c30d9;border:1px solid #38617e;padding:10px;border-radius:8px;font-size:10px;color:#b8cddd;text-align:center}
+.pill{color:#44c5ed}.muted{color:#90a6bc}
+</style></head><body><div class="app">
+<header><div><strong>◉ GMOD RECON</strong><small>GLOBAL SERVER ATLAS</small></div><span class="status" id="mode">● DEMO</span><button id="scan">Scan live</button></header>
+<main><div id="map"></div><div class="menu"><button id="menu">☰ Filters</button></div>
+<div class="notice" id="notice">Synthetic example servers · not real locations</div>
+<div class="controls"><button id="plus">+</button><button id="minus">−</button><button id="world">◎</button></div>
+<aside id="sheet"><h2>Server Network</h2><p class="hint">Explore Garry's Mod worldwide. Location markers are estimates unless verified.</p>
+<div id="stats"></div>
+<input type="search" id="search" placeholder="Search servers, countries, maps…">
+<label>Active servers only <input type="checkbox" id="active"></label>
+<label>Top 100 in view <input type="checkbox" id="top100"></label>
+<label>Watchlist only <input type="checkbox" id="saved"></label>
+<h3>MINIMUM PLAYERS: <span id="mintext">0+</span></h3><input type="range" id="min" min="0" max="50" value="0">
+<h3>GAMEMODE</h3><select id="gamemode"><option value="">All gamemodes</option></select>
+<h3>CLUSTER BY</h3><div><button id="serverMetric">Servers</button><button id="playerMetric">Players</button></div>
+<h3>TOP COUNTRIES</h3><div id="countries"></div>
+<h3>SERVERS IN VIEW</h3><div id="list"></div>
+<p class="hint">All listed servers are synthetic test examples. Private home addresses are never inferred from IPs.</p></aside>
+<div class="panel hide" id="panel"><button style="float:right" id="close">✕</button><div class="pill">SERVER DETAILS · DEMO</div><div id="panelname"></div><div id="paneldata" class="metadata"></div><p class="hint">Demo coordinates are invented. Real IP locations would have an accuracy radius.</p><button id="watch">☆ Watch</button> <button id="copy">Copy IP</button></div>
+<footer><span id="footertext">DEMO · 477 synthetic GMod servers</span></footer>
+</main></div>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+<script>
+(function(){
+"use strict";const el=x=>document.getElementById(x), games=['Sandbox','DarkRP','TTT','Prop Hunt','Zombie Survival','Murder','StarWarsRP','MilitaryRP'],maps=['gm_construct','gm_flatgrass','rp_downtown_v4c','ttt_minecraft_b5','gm_bigcity'];
+const locations=[
+['San Jose','United States','US',37.33,-121.88,66],['Dallas','United States','US',32.78,-96.79,38],['Chicago','United States','US',41.88,-87.63,32],['New York','United States','US',40.71,-74.01,36],['Los Angeles','United States','US',34.05,-118.24,34],
+['Toronto','Canada','CA',43.65,-79.38,24],['London','United Kingdom','GB',51.51,-.12,43],['Frankfurt','Germany','DE',50.11,8.68,42],['Paris','France','FR',48.86,2.35,20],['Warsaw','Poland','PL',52.23,21.01,20],['Moscow','Russia','RU',55.75,37.62,23],['São Paulo','Brazil','BR',-23.55,-46.63,18],['Sydney','Australia','AU',-33.86,151.21,18],['Tokyo','Japan','JP',35.67,139.65,22],['Seoul','South Korea','KR',37.56,126.97,16],['Shanghai','China','CN',31.23,121.47,25]];
+let seed=16427;function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+const servers=[];for(const c of locations){for(let i=0;i<c[5];i++){let id='demo-'+servers.length,p=Math.floor(rand()*65),max=p>50?100:64,g=games[Math.floor(rand()*games.length)];
+servers.push({id,name:g+' • Community '+(servers.length+1),gamemode:g,map:maps[Math.floor(rand()*maps.length)],players:p,maxPlayers:max,ip:'192.0.2.'+(1+(servers.length%253)),port:27015+(i%20),lat:c[3]+(rand()-.5)*.45,lon:c[4]+(rand()-.5)*.55,city:c[0],country:c[1],countryCode:c[2]})}}
+servers.length=477;
+let map=null,selected=null,ready=false,metric='servers',visible=[],watches=new Set(JSON.parse(localStorage.getItem('gmodrecon-watch')||'[]'));
+const esc=s=>String(s).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','"':'&quot;'}[x]));
+const gameModes=[...new Set(servers.map(x=>x.gamemode))].sort();el('gamemode').innerHTML='<option value="">All gamemodes</option>'+gameModes.map(x=>'<option>'+esc(x)+'</option>').join('');
+function inView(s){if(!ready)return true;const b=map.getBounds(),a=b.getWest(),z=b.getEast();return s.lat>=b.getSouth()&&s.lat<=b.getNorth()&&(a<=z?s.lon>=a&&s.lon<=z:s.lon>=a||s.lon<=z)}
+function update(){let t=el('search').value.toLowerCase().trim(),min=+el('min').value,game=el('gamemode').value;el('mintext').textContent=min+'+';
+visible=servers.filter(s=>(!el('active').checked||s.players>0)&&s.players>=min&&(!game||s.gamemode===game)&&(!el('saved').checked||watches.has(s.id))&&(!t||[s.name,s.map,s.gamemode,s.city,s.country].some(x=>x.toLowerCase().includes(t))));
+if(el('top100').checked)visible=visible.filter(inView).sort((a,b)=>b.players-a.players).slice(0,100);
+el('stats').textContent=visible.length+' servers  ·  '+visible.reduce((n,s)=>n+s.players,0).toLocaleString()+' players';
+const counts={};for(const s of visible){counts[s.country]=(counts[s.country]||0)+1}
+el('countries').innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>'<div style="padding:4px 0">'+esc(k)+' <b style="float:right">'+v+'</b></div>').join('');
+const list=visible.filter(inView).sort((a,b)=>b.players-a.players).slice(0,15);
+el('list').innerHTML=list.map(s=>'<button class="entry" data-id="'+s.id+'">'+esc(s.name)+'<small>'+esc(s.city)+' · '+esc(s.map)+' · '+s.players+'/'+s.maxPlayers+'</small></button>').join('')||'<p class="hint">No matching servers</p>';
+document.querySelectorAll('.entry').forEach(b=>b.onclick=()=>pick(b.dataset.id));
+el('footertext').textContent='DEMO · '+visible.length+' synthetic servers shown';
+if(ready){let fc={type:'FeatureCollection',features:visible.map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s.lon,s.lat]},properties:{id:s.id,players:s.players}}))};map.getSource('servers').setData(fc)}}
+function pick(id){selected=servers.find(s=>s.id===id);if(!selected)return;el('panel').classList.remove('hide');el('panelname').textContent=selected.name;el('paneldata').innerHTML=esc(selected.city+', '+selected.country)+'<br>'+esc(selected.gamemode+' • '+selected.map)+'<br>'+selected.players+'/'+selected.maxPlayers+' players<br>Address: <b>unavailable (synthetic data)</b>';el('watch').textContent=watches.has(id)?'★ Saved':'☆ Watch';el('sheet').classList.remove('open')}
+el('watch').onclick=()=>{if(!selected)return;watches.has(selected.id)?watches.delete(selected.id):watches.add(selected.id);localStorage.setItem('gmodrecon-watch',JSON.stringify([...watches]));pick(selected.id);update()};
+el('copy').onclick=()=>{if(selected){prompt('Demo IP:port',selected.ip+':'+selected.port)}};
+el('close').onclick=()=>el('panel').classList.add('hide');
+el('menu').onclick=()=>el('sheet').classList.toggle('open');
+el('scan').onclick=()=>alert('Live discovery requires a separately hosted server-discovery backend. This APK currently contains demo data only.');
+for(const id of ['search','active','top100','saved','min','gamemode'])el(id).addEventListener(id==='search'||id==='min'?'input':'change',update);
+el('serverMetric').onclick=()=>{metric='servers';if(ready)map.setLayoutProperty('cluster-count-label','text-field',['get','point_count'])};
+el('playerMetric').onclick=()=>{metric='players';alert('Player totals appear in the filter panel. Cluster player-total labels are planned.')};
+el('plus').onclick=()=>map&&map.zoomIn();el('minus').onclick=()=>map&&map.zoomOut();el('world').onclick=()=>map&&map.flyTo({center:[8,21],zoom:1.2});
+update();
+if(!window.maplibregl){el('notice').textContent='Map library unavailable. Check internet; filters and list still work.';return}
+try{
+map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:[8,21],zoom:1.2,attributionControl:false});
+map.on('load',()=>{
+map.addSource('servers',{type:'geojson',data:{type:'FeatureCollection',features:[]},cluster:true,clusterRadius:54,clusterMaxZoom:13});
+map.addLayer({id:'clusters',type:'circle',source:'servers',filter:['has','point_count'],paint:{'circle-color':['step',['get','point_count'],'#2376af',20,'#209cb9',60,'#6c64bd',120,'#b965b6'],'circle-radius':['step',['get','point_count'],16,20,21,60,26,120,32],'circle-stroke-color':'#c8eafa','circle-stroke-width':1.4}});
+map.addLayer({id:'cluster-count-label',type:'symbol',source:'servers',filter:['has','point_count'],layout:{'text-field':['get','point_count'],'text-size':13,'text-font':['Open Sans Bold'],'text-allow-overlap':true},paint:{'text-color':'#ffffff'}});
+map.addLayer({id:'points',type:'circle',source:'servers',filter:['!',['has','point_count']],paint:{'circle-color':'#42d5e6','circle-radius':5,'circle-stroke-color':'#e6faff','circle-stroke-width':1}});
+map.on('click','clusters',ev=>{let f=map.queryRenderedFeatures(ev.point,{layers:['clusters']})[0];if(!f)return;map.getSource('servers').getClusterExpansionZoom(f.properties.cluster_id).then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z}))});
+map.on('click','points',ev=>{let f=map.queryRenderedFeatures(ev.point,{layers:['points']})[0];if(f)pick(f.properties.id)});
+map.on('mouseenter','points',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','points',()=>map.getCanvas().style.cursor='');
+ready=true;update()});map.on('moveend',()=>{if(el('top100').checked)update();else update()});map.on('error',()=>{});
+}catch(e){el('notice').textContent='Map unavailable: '+e.message}
+})();
+</script></body></html>
