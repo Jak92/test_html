@@ -1,7 +1,7 @@
-name: GMod Recon Android APK
+name: GMod Recon v0.2 Android APK
 on:
   push:
-    branches: [gmod-recon-android-v011-build]
+    branches: [gmod-recon-android-v02-live]
     paths: ['gmod-recon/**', '.github/workflows/gmod-recon-apk.yml']
   workflow_dispatch:
 jobs:
@@ -16,16 +16,49 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
-      - name: Install Android SDK 35
+      - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Build debug APK
+      - name: JavaScript syntax check
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('gmod-recon/android/app/src/main/assets/index.html').read_text()
+          Path('/tmp/gmod-recon-check.js').write_text(s.rsplit('<script>',1)[1].split('</script>',1)[0])
+          PY
+          node --check /tmp/gmod-recon-check.js
+      - name: Probe live public feeds
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          results={}
+          feeds=[
+            ('gsm','https://gsm.kuryzhev.cloud/api/gmod/servers?page=1&page_size=2&online=true&source=steam'),
+            ('geojs','https://get.geojs.io/v1/ip/geo/8.8.8.8.json'),
+          ]
+          for name,url in feeds:
+            try:
+              req=urllib.request.Request(url,headers={'User-Agent':'GModRecon/0.2 (API probe)','Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=15) as response:
+                data=json.load(response)
+              results[name]={'ok':True,'total':data.get('total') if isinstance(data,dict) else None,'count':len(data.get('items',[])) if isinstance(data,dict) else 0}
+            except Exception as exc:
+              results[name]={'ok':False,'error':str(exc)[:200]}
+          print(json.dumps(results,indent=2))
+          with open('gmod-recon/feed-probe.json','w') as f:json.dump(results,f,indent=2)
+          PY
+      - name: Build Android APK
         working-directory: gmod-recon/android
         run: gradle --no-daemon :app:assembleDebug
+      - name: Package source ZIP
+        run: zip -q -r GMod-Recon-v0.2-Android-Source.zip gmod-recon/android gmod-recon/README.md gmod-recon/feed-probe.json .github/workflows/gmod-recon-apk.yml -x 'gmod-recon/android/**/build/*' 'gmod-recon/android/.gradle/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: GMod-Recon-Android-debug-APK
-          path: gmod-recon/android/app/build/outputs/apk/debug/app-debug.apk
+          name: GMod-Recon-v0.2-APK-and-Source
+          path: |
+            gmod-recon/android/app/build/outputs/apk/debug/app-debug.apk
+            GMod-Recon-v0.2-Android-Source.zip
+            gmod-recon/feed-probe.json
           retention-days: 30
